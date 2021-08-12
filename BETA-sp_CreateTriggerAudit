@@ -1,0 +1,154 @@
+-- sp_CreateTriggerAudit
+USE master
+GO
+
+-- EXEC master.dbo.sp_CreateTriggerAudit_BETA @db = 'ProcessoTrigger' --, @opcao = 1
+
+ALTER PROCEDURE [dbo].[sp_CreateTriggerAudit_BETA] 
+	@db		VARCHAR(128),
+	@opcao	tinyint = 0 -- 0-Apenas tabelas alteradas; 1 - Geral
+AS
+BEGIN
+	PRINT '*** sp_CreateTriggerAudit_BETA V1.08 - 02Julho20'
+
+	SET NOCOUNT ON
+
+	DECLARE @Tb				VARCHAR(128)
+	DECLARE @NomeTbAudit	VARCHAR(128)
+
+	DECLARE @ResultMessage	VARCHAR(128)
+
+	DECLARE @CamposAudit	VARCHAR(MAX)
+	DECLARE @CamposSelect	VARCHAR(MAX)
+
+	DECLARE @NomeTrigger	VARCHAR(128)
+	DECLARE @Trigger		nVARCHAR(MAX)
+	DECLARE @TipoTrigger	VARCHAR(16)
+
+	DECLARE @ExecDb 		nVARCHAR(max) = QUOTENAME( @db ) 			+ N'.sys.sp_executesql'
+	DECLARE @ExecDbAudit 	nVARCHAR(max) = QUOTENAME( @db + '_audit' ) + N'.sys.sp_executesql'
+
+	DECLARE @TSQL			nVARCHAR(MAX)
+
+
+	-- TABELAS
+	IF	OBJECT_ID('tempdb..#tmpTabelas') IS NOT NULL
+		DROP TABLE #tmpTabelas
+
+	CREATE TABLE #tmpTabelas	( Tb VARCHAR(128), NomeTrigger VARCHAR(128), NomeTbAudit VARCHAR(128) )
+
+	IF @opcao = 0 -- Gerar triggers APENAS tabelas que foram atualizadas
+		SET		@TSQL = 'SELECT	t.name, tg.name, ( SELECT ta.name from ' + quotename( @db + '_Audit' ) + N'.sys.tables  ta WHERE ta.name = t.name COLLATE SQL_Latin1_General_CP1_CI_AI ) FROM ' + quotename(@db) + N'.sys.tables t LEFT JOIN  sys.triggers tg ON tg.parent_id = t.object_id	WHERE ( t.modify_date > tg.modify_date ) OR tg.name IS NULL'
+	ELSE -- Gerar triggers para todas as tabelas
+		SET		@TSQL = 'SELECT	t.name, tg.name, ( SELECT ta.name from ' + quotename( @db + '_Audit' ) + N'.sys.tables  ta WHERE ta.name = t.name COLLATE SQL_Latin1_General_CP1_CI_AI ) FROM ' + quotename(@db) + N'.sys.tables t LEFT JOIN  sys.triggers tg ON tg.parent_id = t.object_id'
+
+
+	INSERT INTO #tmpTabelas
+		EXEC	@ExecDb @TSQL, N'@db VARCHAR(128)', @db;
+
+
+	-- LIMPAR de #tmp Trigger de auditoria e do Flyway
+	DELETE FROM  #tmpTabelas WHERE ( NomeTrigger LIKE '%_IR' ) OR ( Tb = '_flyway_schema_history_Audit' )
+
+SELECT * FROM #tmpTabelas
+
+	WHILE ( SELECT COUNT(*) FROM #tmpTabelas ) > 0
+		BEGIN
+			SET @CamposAudit	= ''
+			SET @CamposSelect	= ''
+
+
+			SELECT TOP 1 @Tb = Tb, @NomeTrigger = NomeTrigger, @NomeTbAudit = NomeTbAudit FROM #tmpTabelas	 ORDER BY Tb
+
+			DELETE FROM  #tmpTabelas WHERE  Tb = @Tb
+
+
+			-- CAMPOS
+			IF OBJECT_ID('tempdb..#tmpCampos') IS NOT NULL
+				DROP TABLE #tmpCampos
+
+			CREATE TABLE #tmpCampos	( Campos VARCHAR(128) )
+
+			SET		@TSQL = 'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @Tb'; 
+
+			INSERT INTO #tmpCampos
+				EXEC	@ExecDb @TSQL, N'@tb VARCHAR(128)', @Tb;
+
+			SELECT	@CamposAudit	= @CamposAudit + Campos + ', ' FROM #tmpCampos
+			SET		@CamposAudit	= SUBSTRING( @CamposAudit, 0, LEN( @CamposAudit ));
+
+			SET		@CamposAudit	= @CamposAudit + ', _Audit_Operacao, _Audit_UsuarioConexao, _Audit_DataConexao'
+
+			-- CREATE Tb_Audit From TbBase
+			IF @NomeTbAudit IS NULL 
+				BEGIN
+					SET		@TSQL = 'SELECT * INTO ' + @db + '_Audit' + '.dbo.' + @Tb + ' FROM ' + @db + '.dbo.' + @Tb + ' WHERE 1 = 2';		      
+	
+					EXEC	@ExecDb @TSQL
+		
+
+					-- ADD campos de audit
+					SET		@TSQL = 'ALTER TABLE ' + @db + '_Audit' + '.dbo.' + @Tb + ' ADD _Audit_Operacao char(1) NOT NULL, _Audit_UsuarioConexao varchar(20) NOT NULL, _Audit_DataConexao datetime NOT NULL';		      
+
+					EXEC	@ExecDb @TSQL
+				END
+
+
+			IF @NomeTrigger IS NULL
+				BEGIN
+					SET @Trigger = REPLACE ( 'CREATE TRIGGER [dbo].[tg_TableName_Audit] On [dbo].[TableName]', 'TableName' , @Tb ) + CHAR(10)
+					SET @NomeTrigger = 'tg_' + RTRIM( @Tb ) + '_Audit'
+					SET	@TipoTrigger = 'CREATE TRIGGER'
+				END
+			ELSE
+				BEGIN
+					SET @Trigger = REPLACE ( 'ALTER TRIGGER [dbo].[tg_TableName_Audit] On [dbo].[TableName]', 'TableName' , @Tb ) + CHAR(10)
+
+					SET	@TipoTrigger = 'ALTER TRIGGER'
+				END
+
+
+			SET @Trigger = @Trigger + 'FOR UPDATE, DELETE' + CHAR(10)
+
+			SET @Trigger = @Trigger + 'AS' + CHAR(10)
+
+			SET @Trigger = @Trigger + REPLACE ( 'INSERT INTO [BdBase_Audit].[dbo].[TableName]', 'TableName' , @Tb ) 
+
+			SET @Trigger = REPLACE ( @Trigger, 'BdBase' , @db )
+
+			SET @Trigger = @Trigger + REPLACE ( ' ( Campos', 'Campos' , @CamposAudit ) + ' )' + CHAR(10)
+
+			SET @CamposSelect = @CamposAudit
+
+			SET @CamposSelect = REPLACE ( '	SELECT Campos', 'Campos' , @CamposSelect )
+
+			SET @CamposSelect = REPLACE ( @CamposSelect, 'IdSessaoOperacao,',	    '( SELECT TOP 1 IdSessaoOperacao FROM inserted ),' )
+			SET @CamposSelect = REPLACE ( @CamposSelect, '_Audit_Operacao,',		'IIF(EXISTS(SELECT * FROM Inserted),''U'',''D''),' )
+			SET @CamposSelect = REPLACE ( @CamposSelect, '_Audit_UsuarioConexao,',	'SUSER_SNAME(),' )
+			SET @CamposSelect = REPLACE ( @CamposSelect, '_Audit_DataConexao',		'GETDATE()' ) + ' FROM deleted' + CHAR(10)
+
+
+			SET @Trigger = @Trigger + @CamposSelect
+
+
+			-- SET	@Trigger	= 'SELECT o.name FROM sys.triggers AS t INNER JOIN sys.objects AS o  ON t.parent_id = o.object_id WHERE o.name = @Tb';    
+						-- EXEC	@ExecDb @Trigger, N'@TbRename varchar(128)', @TbRename;
+
+
+			BEGIN TRY
+				EXEC	@ExecDb @Trigger
+
+				-- _Migrate_Table_Audit Success
+				SET		@TSQL = 'INSERT INTO ' + @db + '_Audit' + '.dbo._Migrate_Table_Audit ( EventType, ObjectName, ResultMessage ) VALUES ( @TipoTrigger, @Tb, @NomeTrigger )';
+
+				EXEC	@ExecDbAudit @TSQL, N'@TipoTrigger VARCHAR(16), @Tb varchar(128), @NomeTrigger varchar(128)', @TipoTrigger, @Tb, @NomeTrigger;
+			END TRY
+			BEGIN CATCH
+				-- _Migrate_Table_Audit ERROR
+				SET	@TSQL = 'INSERT INTO ' + @db + '_Audit' + '.dbo._Migrate_Table_Audit ( EventType, ObjectName, ResultMessage, Success, [Trigger] ) VALUES ( @TipoTrigger, @Tb, ERROR_MESSAGE(), 0, @Trigger2 )';
+			
+				EXEC	@ExecDbAudit @TSQL, N'@TipoTrigger VARCHAR(16), @Tb varchar(128), @Trigger2 nVARCHAR(MAX)', @TipoTrigger, @Tb, @Trigger
+			END CATCH
+
+		END
+END

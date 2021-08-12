@@ -1,0 +1,129 @@
+-- DIRETORIA
+
+--select	d.IdDiretoria, d.Sigla, d.NomeDiretoria,
+--		GD.IdDiretoria, gd.Sigla, gd.NomeDiretoria, 
+--		PF.NomePessoaFisica,
+--		PF2.NomePessoaFisica
+--from GenDiretoria D
+--LEFT JOIN Gen_Diretoria GD ON d.IdDiretoria = gd.IdDiretoria
+--LEFT JOIN Gen_PessoaFisica PF ON IdOperadorDiretor = IdPessoaFisica
+--LEFT JOIN Gen_PessoaFisica PF2 ON IdOperadorDiretorSubstituto = PF2.IdPessoaFisica
+
+--WHERe ( d.Sigla <> gd.Sigla ) OR ( d.IdDiretoria <> GD.IdDiretoria ) OR ( d.NomeDiretoria <> GD.NomeDiretoria )
+--ORDER BY d.Sigla
+
+
+
+-- CHECAR SETOR
+
+SELECT count(*) FROM GenDiretoria --d WHERE NOT EXISTS( SELECT * FROM Gen_Diretoria gd  WHERE d.IdDiretoria = gd.IdDiretoria )
+SELECT * FROM Gen_Diretoria gd WHERE NOT EXISTS( SELECT * FROM GenDiretoria d  WHERE d.IdDiretoria = gd.IdDiretoria )
+
+SELECT COUNT(*) FROM Setor
+SELECT COUNT(*) FROM Gen_Setor
+
+select	s.IdSetor, s.Codigo CodigoAR, s.nome NomeAR, s.DataInclusao, s.IdDiretoria IdDiretoriaAR,
+		gs.IdSetor, CodigoSetor CodigoSetorBDC, NomeSetor, GS.IdDiretoria
+from Setor S
+LEFT JOIN Gen_Setor GS ON s.codigo = gs.CodigoSetor
+--LEFT JOIN Gen_Setor GS ON s.IdSetor = gs.idSetor
+WHERe 
+	--( s.nome <> NomeSetor ) 
+	--( s.IdDiretoria <> GS.IdDiretoria)
+
+ ( s.IdSetor <> GS.IdSetor) -- MANUALMENTE, APPOS DESLIGAR IDENTITY 
+
+--	( CodigoSetor IS NULL )  -- NOVOS
+
+ORDER BY Codigo
+
+
+--
+-- CONSERTAR nomes de Setores (Nome da Área Restrita sobrescreve nome no TCEAdmin)
+
+begin tran
+
+UPDATE Gen_Setor 
+SET Gen_Setor.NomeSetor = Setor.Nome
+    FROM Setor
+    WHERE Gen_Setor.IdSetor = Setor.IdSetor AND Setor.nome <> Gen_Setor.NomeSetor
+ 
+-- rollback
+-- commit
+
+
+-- CONSERTAR IdDiretoria (IdDiretoria da Área Restrita sobrescreve IdDiretoria TCEAdmin)
+
+begin tran
+
+UPDATE Gen_Setor 
+SET Gen_Setor.IdDiretoria = Setor.IdDiretoria
+    FROM Setor
+    WHERE Gen_Setor.IdSetor = Setor.IdSetor AND Setor.idDiretoria <> Gen_Setor.IdDiretoria
+
+
+-- rollback
+-- commit
+
+
+---
+
+-- 3 SETORES COM IdSetor diferentes) (3 IdSetores da Área Restrita sobrescreveram os de TCEAdmin)
+
+	-- MANUALMENTE
+
+
+
+----
+
+-- INCLUIR NOVOS SETORES DA ÁREA RESTRITA EM TCEADMIN
+
+BEGIN TRAN
+
+SET IDENTITY_INSERT Bdc.dbo.Gen_Setor ON
+GO
+
+  INSERT INTO Bdc.dbo.Gen_Setor
+(
+	IdSetor,
+	IdDiretoria,
+	CodigoSetor, 
+	NomeSetor,
+	SetorFazAnalise,
+	SetorTramita,
+	SetorTramitaSetorExterno,
+	TrabalhaProcessoEletronico,
+	FazDistribuicao,
+	SetorBatePonto,
+	SetorAtivo,
+	DataInclusao,
+	IdSessao
+)
+SELECT 
+	 s.[idSetor]
+	,IIF(s.IdDiretoria IS NULL, 0, s.IdDiretoria)
+	,[codigo]
+      ,[nome]
+	  ,1
+	  ,1
+	  ,1
+	  ,1
+	  ,1
+	  ,1
+	  ,1
+      ,GETDATE()
+		,0
+  FROM [Setor] s
+LEFT JOIN Gen_Setor GS ON s.codigo = gs.CodigoSetor
+--LEFT JOIN Gen_Setor GS ON s.IdSetor = gs.idSetor
+WHERE ( CodigoSetor IS NULL )
+ORDER BY Codigo
+
+
+SET IDENTITY_INSERT Bdc.dbo.Gen_Setor OFF
+GO
+
+-- commit
+-- rollback
+
+

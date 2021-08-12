@@ -1,0 +1,74 @@
+-- ANEXO_42
+
+SELECT	-- r.IdResponsavel, ru.IdResponsavel, ru.IdResponsavelUnidade, uj.IdOrgao, 
+		 NomeCidade, NomeOrgao
+		 ,NomeFuncaoResponsavel, Cargo
+		,r.Nome as NomeResponsavelUnidade, CPF as CPFResponsavelUnidade, r.Telefone, r.Email
+		,DataInicioGestao, DataTerminoGestao
+
+  FROM [bdSIAI].[dbo].[Anexo42_ResponsavelUnidade] ru
+
+LEFT JOIN Anexo42_Responsavel r						on r.IdResponsavel = ru.IdResponsavel 
+LEFT JOIN Anexo42_UnidadeJurisdicionada uj			on uj.IdUnidadeJurisdicionada = ru.IdUnidadeJurisdicionada
+LEFT JOIN bdc.dbo.Gen_Orgao o						on uj.IdOrgao = o.IdOrgao
+LEFT JOIN bdc.dbo.Gen_Cidade c						on uj.IdCidade = c.IdCidade
+LEFT JOIN Anexo42_FuncaoResponsavel fr				on ru.IdFuncaoResponsavel = fr.IdFuncaoResponsavel
+LEFT JOIN bdc.dbo.Gen_UnidadeJurisdicionada bdcUJ	on uj.IdOrgao = bdcUJ.IdUnidadeJurisdicionada
+
+where 1=1
+	and ru.Ativo = 1
+	and [IdGrupoUnidadeJurisdicionada] IN (9,10)
+	and uj.IdOrgao <> 1267 -- UNIDADE TESTE - PREFEITURA
+--	and r.IdCidade = 3770
+--	and r.Nome = 'PAULO EDUARDO DA COSTA FREIRE'
+
+order by NomeCidade, NomeOrgao
+
+
+------------------
+
+-- CONTROLE INTERNO 
+
+SELECT	c.NomeCidade
+		,o.NomeOrgao
+	--	,ucci.[IdUCCI], ucci.[IdOrgao]
+		DesignacaoUnidade, FuncaoPessoa, NomePessoa, CpfPessoa, TelefoneInstitucional, TelefoneCelular, Email, EmailInstitucional
+ 
+FROM [bdSIAI].[dbo].[Anexo40_UCCI] ucci
+LEFT JOIN Anexo40_PessoaUCCI p ON ucci.IdUCCI = p.IdUCCI
+LEFT JOIN bdc.dbo.Gen_Orgao o						on ucci.IdOrgao = o.IdOrgao
+LEFT JOIN bdc.dbo.Gen_Cidade c						on o.IdCidadeOrgao = c.IdCidade
+LEFT JOIN bdc.dbo.Gen_UnidadeJurisdicionada bdcUJ	on ucci.IdOrgao = bdcUJ.IdUnidadeJurisdicionada
+
+where Ativo = 1 -- PessoaUCCI
+	and [IdGrupoUnidadeJurisdicionada] IN (9,10)
+
+order by c.NomeCidade, NomeOrgao
+
+
+
+
+---
+
+-- Contadores - EnvioLRF
+
+SELECT NomeCidade
+      ,NomeOrgao
+      ,[Ano]
+      ,[Bimestre]
+	  ,nOME
+	  ,CPF
+	  ,Telefone
+	  ,Email
+	--  ,LRF.IdArquivoLRF
+  FROM [bdSIAI].[dbo].[Envio_ArquivoLRF] lrf
+  LEFT JOIN bdc.dbo.Gen_Orgao o						on lrf.IdOrgao = o.IdOrgao
+  LEFT JOIN bdc.dbo.Gen_UnidadeJurisdicionada bdcUJ	on lrf.IdOrgao = bdcUJ.IdUnidadeJurisdicionada
+  LEFT JOIN bdc.dbo.Gen_Cidade c						on o.IdCidadeOrgao = c.IdCidade
+  LEFT JOIN Envio_ResponsavelContabilidade RC		ON LRF.IdArquivoLRF = RC.IdArquivoLRF
+
+  where LRF.IdArquivoLRF = (SELECT TOP 1 IdArquivoLRF from [bdSIAI].[dbo].[Envio_ArquivoLRF] lrf2 where lrf.IdOrgao = lrf2.Idorgao ORDER by IdOrgao, Ano DESC, Bimestre DESC)
+	and [IdGrupoUnidadeJurisdicionada] IN (9,10)
+	and IdSituacaoArquivoLRF = 4
+	--	AND lrf.IdOrgao = 105
+order by NomeCidade, NomeOrgao

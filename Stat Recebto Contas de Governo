@@ -1,0 +1,5 @@
+SELECT  [AnoReferencia] ,[IdSituacaoProcessamentoXml], count(*)
+  FROM [BdSIAI].[dbo].[Documento_ContasDeGoverno]
+  where AnoReferencia = 2019
+  group by [AnoReferencia],[IdSituacaoProcessamentoXml]
+  order by [AnoReferencia],[IdSituacaoProcessamentoXml]
