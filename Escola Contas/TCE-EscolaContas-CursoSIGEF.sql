@@ -46,7 +46,7 @@ where
 		EscInscricao ei
 	INNER JOIN EscInscricao_Turma_Dias itd ON		ei.idTurma = itd.IdTurma	AND ei.IdInscricao = itd.IdInscricao
 	WHERE 
-		ei.IdTurma = 508
+		ei.IdTurma = 516
 	GROUP BY
 		ei.CPF,
 		ei.idturma
@@ -61,11 +61,11 @@ where
 --	order BY
 --		ei.CPF
 )
-	and idturma = 508
+	and idturma = 516
 	
 	
 -- COMMIT 
 -- ROLLBACK 
 	
---	SELECT top 50 * from Processo.dbo.EscInscricao where IdTurma  = 508 order by DataInclusao  DESC
+--	SELECT top 50 * from Processo.dbo.EscInscricao where IdTurma  = 516 order by DataInclusao  DESC
 --	SELECT top 50 * from Processo_Audit.dbo.EscInscricao_Audit order by DataConexao  DESC

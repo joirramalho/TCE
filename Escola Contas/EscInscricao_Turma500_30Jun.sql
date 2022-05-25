@@ -1,7 +1,7 @@
 SELECT * FROM esccurso where idcurso = 427
 
 
-SELECT * FROM [Processo].[dbo].[EscInscricao] where IdTurma = 500 AND IdInscricao = 42230
+SELECT * FROM [Processo].[dbo].[EscInscricao] where IdTurma = 516 AND IdInscricao = 42230
 SELECT * FROM [Processo].[dbo].[EscInscricao] where IdTurma = 500 AND Concluido = 1 AND DataValidacao > '2021-06-23' ORDER BY DataValidacao
 
 
